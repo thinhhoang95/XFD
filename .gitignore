@@ -1,0 +1,3 @@
+data/osstate/*
+**/__pycache__/
+**/*.pyc
