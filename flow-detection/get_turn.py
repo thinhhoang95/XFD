@@ -6,6 +6,9 @@ from changepy.costs import normal_mean
 import matplotlib.pyplot as plt
 
 from typing import TypedDict
+
+import zarr
+
 class TurnAndRise(TypedDict):
     # Direction change
     tp_time: np.ndarray
@@ -20,15 +23,32 @@ class TurnAndRise(TypedDict):
     dp_lon: np.ndarray
     dp_alt: np.ndarray
 
+    # Flight identification
+    ident: str
+
 
 def get_turning_points(df_ident: pd.DataFrame) -> TurnAndRise:
+    """
+    Detects turning points in a flight trajectory based on the provided dataframe. Notice that the last moment for not yet landed flight is NOT considered a turning point.
+
+    Args:
+        df_ident (pd.DataFrame): The dataframe of a single identified flight.
+
+    Returns:
+        dict: A dictionary containing the turning points and altitude change points.
+
+    Raises:
+        None
+
+    """
     # Extract the values from the dataframe
-    rlastposupdate = df_ident['lastposupdate'].values - df_ident['lastposupdate'].min()
+    rlastposupdate = df_ident['lastposupdate'].values # - df_ident['lastposupdate'].min()
     hdg = df_ident['heading'].values
     vel = df_ident['velocity'].values / 1000 # m/s -> km/s
     lat = df_ident['lat'].values
     lon = df_ident['lon'].values
     alt = df_ident['geoaltitude'].values
+    ident = df_ident['ident'].values[0]
 
     # Detection of turning points
     # Compute the drift compensation
@@ -56,6 +76,7 @@ def get_turning_points(df_ident: pd.DataFrame) -> TurnAndRise:
     landed_at = np.where(alt < 500)[0]
     if len(landed_at) > 0:
         changepoints = np.append(changepoints, landed_at[0])
+
         # Delete all the changepoints after the aircraft landed
         changepoints = changepoints[changepoints <= landed_at[0]] 
         flight_not_landed_yet = False
@@ -91,7 +112,8 @@ def get_turning_points(df_ident: pd.DataFrame) -> TurnAndRise:
         'tp_lat': np.array(tp_lat),
         'tp_lon': np.array(tp_lon),
         'tp_alt': np.array(tp_alt),
-        'landed': not flight_not_landed_yet
+        'landed': not flight_not_landed_yet,
+        'ident': ident
     }
 
     result_alt = get_altitude_change_points(rlastposupdate, lat, lon, alt)
@@ -102,6 +124,19 @@ def get_turning_points(df_ident: pd.DataFrame) -> TurnAndRise:
     }
 
 def get_altitude_change_points(rlastposupdate: pd.DataFrame, lat: np.ndarray, lon: np.ndarray, alt:np.ndarray) -> TurnAndRise:
+    """
+    Get altitude change points based on the provided data.
+
+    Args:
+        rlastposupdate (pd.DataFrame): DataFrame containing the time information.
+        lat (np.ndarray): Array of latitude values.
+        lon (np.ndarray): Array of longitude values.
+        alt (np.ndarray): Array of altitude values.
+
+    Returns:
+        dict: A dictionary containing the altitude change points with keys 'dp_time', 'dp_lat', 'dp_lon', and 'dp_alt'.
+    """
+
     dp_time = []
     dp_lat = []
     dp_lon = []
@@ -119,9 +154,7 @@ def get_altitude_change_points(rlastposupdate: pd.DataFrame, lat: np.ndarray, lo
     # Merge changepoints that are too close to each other
     i = 0
     while i < len(dp_lat)-1:
-        # print(i, dp_time[i], dp_time[i+1])
         if (dp_time[i+1] - dp_time[i]) < 120:
-            # print(f'Merging {i} and {i+1}')
             dp_lat[i] = (dp_lat[i] + dp_lat[i+1]) / 2
             dp_lon[i] = (dp_lon[i] + dp_lon[i+1]) / 2
             dp_time[i] = (dp_time[i] + dp_time[i+1]) / 2
@@ -140,7 +173,7 @@ def get_altitude_change_points(rlastposupdate: pd.DataFrame, lat: np.ndarray, lo
         'dp_alt': np.array(dp_alt)
     }
 
-def plot_changepoints(tr: TurnAndRise, df_ident: pd.DataFrame = None) -> None:
+def plot_changepoints(tr: TurnAndRise, df: pd.DataFrame = None, ident:str = None) -> None:
     tp_lat = tr['tp_lat']
     tp_lon = tr['tp_lon']
     tp_alt = tr['tp_alt']
@@ -150,13 +183,66 @@ def plot_changepoints(tr: TurnAndRise, df_ident: pd.DataFrame = None) -> None:
     dp_alt = tr['dp_alt']
     dp_time = tr['dp_time']
 
+    # Check if the dataframe has the required columns
+    if 'ident' not in df.columns:
+        df['ident'] = (df['callsign'].str.strip()+'_'+df['icao24'].str.strip())
+
+    # If ident is specified, filter the dataframe for the specific ident
+    if ident is not None:
+        df_ident = df[df['ident'] == ident]
+    else:
+        df_ident = df 
+    
     # Plot the changepoints
     plt.figure(figsize=(6,6))
     if df_ident is not None:
         plt.plot(df_ident['lon'], df_ident['lat'], 'black') # flight path
     plt.plot(tp_lon, tp_lat, 'go', markersize=3) # turning points
-    plt.plot(dp_lon, dp_lat, 'ro', markersize=3) # altitude change points
+    plt.plot(dp_lon, dp_lat, 'rx', markersize=3) # altitude change points
 
     plt.xlabel('Longitude')
     plt.ylabel('Latitude')
     plt.title('Flight Path with Turning Points (Landed: {})'.format(tr['landed']))
+
+def write_turnandrise_to_zarr(tr: TurnAndRise,  zarr_path: str) -> None:
+    zarr_group = zarr.open(zarr_path, mode='w')
+
+    # Save each item in the dictionary to the ZARR group
+    for key, value in tr.items():
+        if isinstance(value, np.ndarray):
+            # Store numpy arrays directly
+            zarr_group.create_dataset(key, data=value)
+        elif isinstance(value, dict):
+            # Store dictionaries as sub-groups with attributes
+            sub_group = zarr_group.create_group(key)
+            # print('key:', key, 'value:', value)
+            for sub_key, sub_value in value.items():
+                # print('sub_key:', sub_key, 'sub_value:', sub_value)
+                sub_group.attrs[sub_key] = sub_value
+        else:
+            # Store other types of data as attributes
+            # print('key:', key, 'value:', value)
+            zarr_group.attrs[key] = value
+
+def load_turnandrise_from_zarr(zarr_path: str) -> TurnAndRise:
+    # Open the ZARR file in read mode
+    zarr_group = zarr.open(zarr_path, mode='r')
+
+    # Load the data into a dictionary
+    loaded_dict = {}
+    for key in zarr_group:
+        # print('Key:', key)
+        if isinstance(zarr_group[key], zarr.core.Array):
+            # If it's an array, load it as a numpy array
+            loaded_dict[key] = zarr_group[key][:]
+            #print('Key:', key, 'Value:', loaded_dict[key])
+        elif isinstance(zarr_group[key], zarr.hierarchy.Group):
+            # If it's a group, load its attributes into a dictionary
+            loaded_dict[key] = dict(zarr_group[key].attrs)
+            #print('Key:', key, 'Value:', loaded_dict[key])
+        
+    # Load the attrs 
+    for key in zarr_group.attrs:
+        loaded_dict[key] = zarr_group.attrs[key]
+
+    return loaded_dict

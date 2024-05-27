@@ -3,6 +3,9 @@ import os
 from download import get_date_list
 
 def check_files():
+    """
+    Delete the dates that are not complete (having all the hours)
+    """
     date_list = get_date_list('2022-01-03', '2022-01-31')
     for date in date_list:
         hours = range(24) # 0-23
