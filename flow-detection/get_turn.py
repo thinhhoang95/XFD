@@ -26,6 +26,49 @@ class TurnAndRise(TypedDict):
     # Flight identification
     ident: str
 
+def take_off_detection(alt: np.ndarray, thr: float = 500) -> int:
+    """
+    Detects the time step when the aircraft takes off based on altitude data.
+
+    Parameters:
+    alt (np.ndarray): Array of altitude values.
+    thr (float): Altitude threshold for detecting take-off. Default is 500.
+
+    Returns:
+    int: The time step when the aircraft takes off. Returns -1 if no take-off is detected.
+    """
+
+    t_above_thr = np.where(alt > thr, 1, 0) # Find the first time the altitude is above the threshold
+    t_above_thr_diff = np.diff(t_above_thr) # Find the difference between consecutive time steps when the altitude is above the threshold
+    if len(t_above_thr) == 0:
+        return -1 # The aircraft never goes above the threshold so it is on the ground and this is not a take-off
+    # Take off is the moment when the aircraft goes above the threshold 
+    t_takeoff = np.where(t_above_thr_diff > 0.5)[0]
+    if len(t_takeoff) == 0:
+        return -1
+    return t_takeoff[0] + 1 # Return the time step when the aircraft takes off
+
+def landing_detection(alt: np.ndarray, thr: float = 500) -> int:
+    """
+    Detects the time step when the aircraft lands based on altitude data.
+
+    Parameters:
+    alt (np.ndarray): Array of altitude values.
+    thr (float): Altitude threshold for detecting take-off. Default is 500.
+
+    Returns:
+    int: The time step when the aircraft lands. Returns -1 if no landing is detected.
+    """
+
+    t_above_thr = np.where(alt > thr, 1, 0) # Find the first time the altitude is above the threshold
+    t_above_thr_diff = np.diff(t_above_thr) # Find the difference between consecutive time steps when the altitude is above the threshold
+    if len(t_above_thr) == 0:
+        return -1 # The aircraft never goes above the threshold so it is on the ground and this is not a take-off
+    # Take off is the moment when the aircraft goes above the threshold 
+    t_landing = np.where(t_above_thr_diff < -0.5)[0]
+    if len(t_landing) == 0:
+        return -1
+    return t_landing[0] + 1 # Return the time step when the aircraft takes off
 
 def get_turning_points(df_ident: pd.DataFrame) -> TurnAndRise:
     """
@@ -72,17 +115,23 @@ def get_turning_points(df_ident: pd.DataFrame) -> TurnAndRise:
 
     flight_not_landed_yet = True
 
-    # One final changepoint at the end of the flight or when the aircraft lands
-    landed_at = np.where(alt < 500)[0]
-    if len(landed_at) > 0:
-        changepoints = np.append(changepoints, landed_at[0])
+    # Detection of takeoffs
+    t_takeoff = take_off_detection(alt)
+    t_landing = landing_detection(alt)
 
+    # One final changepoint at the end of the flight or when the aircraft lands
+    if t_landing != -1:
+        changepoints = np.append(changepoints, t_landing)
         # Delete all the changepoints after the aircraft landed
-        changepoints = changepoints[changepoints <= landed_at[0]] 
+        changepoints = changepoints[changepoints <= t_landing] 
         flight_not_landed_yet = False
     else:
         changepoints = np.append(changepoints, len(hdg_compensated)-1)
-        flight_not_landed_yet = True
+
+    if t_takeoff != -1:
+        changepoints = np.insert(changepoints, 0, t_takeoff)
+        # Delete all the changepoints before the aircraft took off
+        changepoints = changepoints[changepoints >= t_takeoff]
 
     for i in range(len(changepoints)-1):
         tp_lat.append(lat[changepoints[i]])
@@ -106,6 +155,26 @@ def get_turning_points(df_ident: pd.DataFrame) -> TurnAndRise:
             tp_alt.pop(i+1)
         else:
             i += 1
+
+    # Add takeoff to the changepoints
+    if t_takeoff != -1:
+        if len(tp_time) > 0:
+            if tp_time[0] > rlastposupdate[t_takeoff]:
+                print('Adding takeoff changepoint')
+                tp_lat.insert(0, lat[t_takeoff])
+                tp_lon.insert(0, lon[t_takeoff])
+                tp_time.insert(0, rlastposupdate[t_takeoff])
+                tp_alt.insert(0, alt[t_takeoff])
+                
+    # Add landing to the changepoints
+    if t_landing != -1:
+        if len(tp_time) > 0:
+            if tp_time[-1] < rlastposupdate[t_landing]:
+                print('Adding landing changepoint')
+                tp_lat.append(lat[t_landing])
+                tp_lon.append(lon[t_landing])
+                tp_time.append(rlastposupdate[t_landing])
+                tp_alt.append(alt[t_landing])
 
     result_turn = {
         'tp_time': np.array(tp_time),
