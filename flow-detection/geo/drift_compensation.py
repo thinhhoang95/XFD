@@ -189,7 +189,11 @@ def get_track_drift_rate(lat: float, lon: float, initial_crs: float):
     c_prime = get_course_vector_on_GC(P_prime, s, P)
     if c_prime is None:
         return 0
-    angle = np.rad2deg(np.arccos(np.dot(n_prime, c_prime)))
+    with np.errstate(invalid='raise'):
+        try:
+            angle = np.rad2deg(np.arccos(np.dot(n_prime, c_prime)))
+        except:
+            return 0
     # We must differentiate between the two possible angles: negative and positive since the dot product is symmetric (does not reveal the direction of multiplication)
     # The idea is to compute the cross product between n_prime and c_prime, if the product is in the same direction as P', then the angle is positive (<180)
     # Otherwise, the angle is negative (>180)
