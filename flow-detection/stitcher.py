@@ -1,4 +1,22 @@
 import numpy as np
+from tqdm import tqdm
+from pyproj import Proj, transform
+import pandas as pd
+
+def get_region_bounds(region: str) -> tuple:
+    # Get the geographical boundaries for the map 
+    if region=='conus':
+        # Contiguous United States
+        lat_bounds = [23, 51]
+        lon_bounds = [-130, -65]
+    elif region=='europe':
+        # Europe, from Portugal to Greece, not including Russia
+        lat_bounds = [34, 72]        
+        lon_bounds = [-32, 40]
+    else:
+        raise ValueError(f"Region {region} not recognized. Use 'conus' or 'europe'.")
+    
+    return lat_bounds, lon_bounds
 
 def stitch(start_points: np.ndarray, end_points: np.ndarray, q1_eps: float = None, eps: float = None) -> np.ndarray:
     # Concatenate start_points and end_points
@@ -75,8 +93,8 @@ def stitch(start_points: np.ndarray, end_points: np.ndarray, q1_eps: float = Non
     seg_end = segment_points[max_segment_end]
     # Because seg_start and seg_end may not be in the original starting_points and ending_points arrays (i.e., seg_start can be in ending_points and seg_end can be in starting)
     
-    print('Expected seg_start:', seg_start)
-    print('Expected seg_end:', seg_end)
+    # print('Expected seg_start:', seg_start)
+    # print('Expected seg_end:', seg_end)
 
     result = [-1, -1, -1, -1]
     try:
@@ -94,3 +112,123 @@ def stitch(start_points: np.ndarray, end_points: np.ndarray, q1_eps: float = Non
         result[2] = seg_end_idx
 
     return tuple(result)
+
+def get_flow(hash_counts: pd.DataFrame, hash_no: int, hash_df: pd.DataFrame, wp_df: pd.DataFrame, region = 'conus', n_segments_to_sample = 50, eps=1e5) -> None:
+    # Get the top n_plots hash values
+    hash_values = hash_counts.head(128).index
+
+    # Get the hash code corresponding to the hash_no
+    hash_value = hash_values[hash_no]
+
+    # Get the data frame for this hash value
+    hash_df_i = hash_df[hash_df['hash'] == hash_value]
+
+    # Get region bounds
+    lat_bounds, lon_bounds = get_region_bounds(region)
+
+    # If hash_df_i has more than 20 rows, sample 20 rows
+    if len(hash_df_i) > n_segments_to_sample:
+        hash_df_i = hash_df_i.sample(n_segments_to_sample)
+
+    # Get the waypoints
+    wpf = hash_df_i['wpf'].values
+    wpt = hash_df_i['wpt'].values
+
+    wpf_lats = np.zeros(len(wpf))
+    wpf_lons = np.zeros(len(wpf))
+    wpt_lats = np.zeros(len(wpt))
+    wpt_lons = np.zeros(len(wpt))
+
+    # Get the latitude and longitude of the waypoints
+    for j in range(len(wpf)):
+        wpf_lon = wp_df[wp_df['ident'] == wpf[j]]['lon'].values[0]
+        wpf_lat = wp_df[wp_df['ident'] == wpf[j]]['lat'].values[0]
+        wpt_lon = wp_df[wp_df['ident'] == wpt[j]]['lon'].values[0]
+        wpt_lat = wp_df[wp_df['ident'] == wpt[j]]['lat'].values[0]
+        wpf_lats[j] = wpf_lat
+        wpf_lons[j] = wpf_lon
+        wpt_lats[j] = wpt_lat
+        wpt_lons[j] = wpt_lon
+
+    # Throw away the waypoints that are outside the region
+    wpf_lats2 = wpf_lats[(wpf_lats >= lat_bounds[0]) & (wpf_lats <= lat_bounds[1])]
+    wpf_lons2 = wpf_lons[(wpf_lons >= lon_bounds[0]) & (wpf_lons <= lon_bounds[1])]
+    wpt_lats2 = wpt_lats[(wpt_lats >= lat_bounds[0]) & (wpt_lats <= lat_bounds[1])]
+    wpt_lons2 = wpt_lons[(wpt_lons >= lon_bounds[0]) & (wpt_lons <= lon_bounds[1])]
+
+    if len(wpf_lats2) == 0 or len(wpt_lats2) == 0:
+        print('No waypoints in the region')
+        return None
+
+    # Convert latitude and longitude to x and y using pyproj
+    inProj = Proj('epsg:4326') # WGS 84
+    if region == 'conus':
+        outProj = Proj('epsg:5070') # NAD 83 / Conus Albers
+    elif region == 'europe':
+        outProj = Proj('epsg:3035') # ETRS89 / LAEA Europe
+    
+    try:
+        wpf_x, wpf_y = transform(inProj, outProj, wpf_lons, wpf_lats, always_xy=True)
+        wpt_x, wpt_y = transform(inProj, outProj, wpt_lons, wpt_lats, always_xy=True)
+    except:
+        print('Error in transforming the coordinates')
+    wpft_length = np.sqrt((wpt_x - wpf_x)**2 + (wpt_y - wpf_y)**2)
+
+    # Pick the longest segment to calculate the flow angle and reorient the segments
+    longest_segment_index = np.argmax(wpft_length)
+
+    # INVERT THE SEGMENTS SO THAT ALL SEGMENTS FLOW IN THE SAME DIRECTION WITH THE LONGEST SEGMENT
+    segment_x = wpt_x - wpf_x
+    segment_y = wpt_y - wpf_y
+
+    segment_longest_x = segment_x[longest_segment_index]
+    segment_longest_y = segment_y[longest_segment_index]
+
+    # We take the sign of the dot product between each segment and the longest segment
+    # If the sign is positive, the segment is in the same direction as the longest segment
+    # If the sign is negative, the segment is in the opposite direction as the longest segment
+    dp = segment_x * segment_longest_x + segment_y * segment_longest_y
+    dp_sign = np.sign(dp)
+    # Where dp_sign is 0, we set it to 1
+    dp_sign[dp_sign == 0] = 1
+    segment_x = segment_x * dp_sign
+    segment_y = segment_y * dp_sign
+
+    wpt_x = (wpf_x + segment_x).copy()
+    wpt_y = (wpf_y + segment_y).copy()
+
+    # FLOW ANGLE REORIENTATION
+    flow_rotation_center = np.array([wpf_x[longest_segment_index], wpf_y[longest_segment_index]])
+    flow_angle = -np.arctan2(wpt_y[longest_segment_index] - wpf_y[longest_segment_index], wpt_x[longest_segment_index] - wpf_x[longest_segment_index])
+    starting_points = (wpf_x - flow_rotation_center[0]) * np.cos(flow_angle) - (wpf_y - flow_rotation_center[1]) * np.sin(flow_angle) + flow_rotation_center[0]
+    ending_points = (wpt_x - flow_rotation_center[0]) * np.cos(flow_angle) - (wpt_y - flow_rotation_center[1]) * np.sin(flow_angle) + flow_rotation_center[0]
+    
+    for i in range(len(starting_points)):
+        if starting_points[i] > ending_points[i]:
+            starting_points[i], ending_points[i] = ending_points[i], starting_points[i]
+
+    # STITCH THE SEGMENTS USING STITCHER
+    # ss: start in the starting_points, se: start in the ending_points, es: end in the starting_points, ee: end in the ending_points
+    sm_ss, sm_se, sm_es, sm_ee = stitch(starting_points, ending_points, eps)
+    sm_s = sm_ss if sm_se == -1 else sm_se
+    sm_e = sm_es if sm_ee == -1 else sm_ee
+
+    # Sphere
+    wpflats = wpf_lats if sm_se == -1 else wpt_lats
+    wpflons = wpf_lons if sm_se == -1 else wpt_lons
+    wptlats = wpf_lats if sm_ee == -1 else wpt_lats
+    wptlons = wpf_lons if sm_ee == -1 else wpt_lons
+
+    sm_start = [wpflats[sm_s], wpflons[sm_s]]
+    sm_end = [wptlats[sm_e], wptlons[sm_e]]
+
+    return sm_start, sm_end
+
+    # Plot the great circle using cartopy
+    # fig = plt.figure(figsize=(10, 10))
+    # ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
+    # ax.set_extent([lon_bounds[0], lon_bounds[1], lat_bounds[0], lat_bounds[1]], crs=ccrs.PlateCarree())
+    # ax.coastlines()
+    # ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False)
+    # ax.plot([sm_start[1], sm_end[1]], [sm_start[0], sm_end[0]], color='red', linewidth=0.5)
+    # plt.show()
