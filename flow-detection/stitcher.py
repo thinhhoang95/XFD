@@ -232,3 +232,42 @@ def get_flow(hash_counts: pd.DataFrame, hash_no: int, hash_df: pd.DataFrame, wp_
     # ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False)
     # ax.plot([sm_start[1], sm_end[1]], [sm_start[0], sm_end[0]], color='red', linewidth=0.5)
     # plt.show()
+
+import visvalingamwyatt as vw
+from tqdm import tqdm
+
+def visvalingam_wyatt_merge_flows(merge_instructions: list, flows: list) -> list:
+    # Merge the flows using the merge instructions
+    merged_flows = []
+    flow_id_to_skip = []
+    # Flows: list of (sm_start, sm_end) where sm_start and sm_end are lists of [lat, lon]
+    for f in tqdm(range(len(flows))):
+        if f in flow_id_to_skip:
+            continue
+        flow = [flows[f][0], flows[f][1]] # convert the list of tuples to a list of lists
+        for i in range(len(merge_instructions)):
+            instruction = merge_instructions[i]
+            if f in instruction:
+                print('Scanning instruction:', instruction)
+                for subflow_id in instruction:
+                    if subflow_id != f:
+                        flow += [flows[subflow_id][0], flows[subflow_id][1]]
+                        flow_id_to_skip.append(subflow_id)
+
+        # Simplify the flow using Visvalingam-Wyatt
+        # Sort the flow by latitude, then longitude to prevent loops
+        try:
+            flow = sorted(flow, key=lambda x: (x[0], x[1]))
+        except:
+            print('Error in sorting the flow')
+            continue
+        # Convert the list of list into a list of tuples
+        flow = [(flow[i][0], flow[i][1]) for i in range(len(flow))]
+        if len(flow) >= 3:
+            simplified_flow = vw.simplify(flow, threshold=0.001)
+            print(f'Flow {f} simplified from {len(flow)} to {len(simplified_flow)}')
+        else:
+            simplified_flow = flow
+        merged_flows.append(simplified_flow)
+
+    return merged_flows
