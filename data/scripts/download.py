@@ -4,6 +4,12 @@ from datetime import datetime, timedelta
 from typing import List
 import multiprocessing
 
+def make_dir() -> None:
+    import os
+    os.makedirs('/workspace/deepflow/data/osstate', exist_ok=True)
+
+make_dir()
+
 def download_file(url: str, filename: str, directory: str) -> None:
     print(f"Downloading {filename} from {url} to {directory}")
     response = requests.get(url)
@@ -18,9 +24,11 @@ def download(datetimes: List) -> None:
         for hour in hours:
             try:
                 url = 'https://opensky-network.org/datasets/states/{datetime}/{hour}/states_{datetime}-{hour}.csv.tar'
+                
                 url = url.format(datetime=datetime, hour=hour)
+                print(f'Downloading from {url}')
                 filename = url.split('/')[-1]
-                download_file(url, filename, 'data/osstate')
+                download_file(url, filename, '/workspace/deepflow/data/osstate')
             except Exception as e:
                 print(f"Error occurred while downloading file: {e}")
                 continue
@@ -36,22 +44,22 @@ def get_date_list(std: str, ed: str) -> List[str]:
     return date_list
 
 def test_get_date_list() -> None:
-    date_list = get_date_list('2022-01-03', '2022-06-27')
-    assert date_list[0] == '2022-01-03'
+    date_list = get_date_list('2022-04-04', '2022-06-27')
+    assert date_list[0] == '2022-04-04'
     assert date_list[-1] == '2022-06-27'
     assert len(date_list) == 26
 
-test_get_date_list()
+# test_get_date_list()
 
 def test_download_file() -> None:
     return # this function should be tested separately
     url = 'https://opensky-network.org/datasets/states/2022-06-06/00/states_2022-06-06-00.csv.tar'
     filename = 'states_2022-06-06-00.csv.tar'
-    directory = 'data/osstate'
+    directory = '/workspace/deepflow/data/osstate'
     download_file(url, filename, directory)
 
 def multiprocess_download(threads=4) -> None:
-    date_list = get_date_list('2022-01-03', '2022-01-31')
+    date_list = get_date_list('2022-04-04', '2022-06-27')
     sublist_size = len(date_list) // threads
 
     processes = []

@@ -1,0 +1,6 @@
+tqdm
+numpy
+scikit-learn
+scipy
+matplotlib
+cartopy
