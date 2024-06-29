@@ -6,7 +6,7 @@ def check_files():
     """
     Delete the dates that are not complete (having all the hours)
     """
-    date_list = get_date_list('2022-01-03', '2022-01-31')
+    date_list = get_date_list('2022-04-04', '2022-04-25')
     for date in date_list:
         hours = range(24) # 0-23
         hours = [str(hour).zfill(2) for hour in hours] # 00-23
@@ -16,12 +16,12 @@ def check_files():
 
         for hour in hours:
             filename = f'states_{date}-{hour}.csv.gz'
-            if not os.path.exists(f'data/osstate/extracted/{filename}'):
+            if not os.path.exists(f'/workspace/deepflow/data/osstate/extracted/{filename}'):
                 markedForDeletion = True
                 break
 
         if markedForDeletion:
-            os.system(f'rm -rf data/osstate/extracted/{date}*')
+            os.system(f'rm -rf /workspace/deepflow/data/osstate/extracted/{date}*')
             print(f"Deleted {date} files")
 
 check_files()
