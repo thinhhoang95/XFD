@@ -75,13 +75,9 @@ def extract_takeoffs_and_landings(file_names: list, df_airport: pd.DataFrame) ->
                     airport = df_airport_prox['ident'].iloc[0]
                 else:
                     # 3. Find the closest airport
-                    min_distance = np.inf
-                    for index, row in df_airport_prox.iterrows():
-                        distance = np.sqrt((row['latitude'] - lat_prox)**2 + (row['longitude'] - lon_prox)**2)
-                        if distance < min_distance:
-                            min_distance = distance
-                            airport = row['ident']
-                            break
+                    # Create a distance column in the df_airport_prox dataframe
+                    df_airport_prox['distance'] = np.sqrt((df_airport_prox['latitude'] - lat_prox)**2 + (df_airport_prox['longitude'] - lon_prox)**2)
+                    airport = df_airport_prox['ident'].loc[df_airport_prox['distance'].idxmin()] 
                 # Write the takeoff demand to the takeoff_demand_file
                 takeoff_demand_file.write(f'{ident},{lat_prox},{lon_prox},{unix_time_to_datetime(time_takeoff)},{airport}\n')
             else:
@@ -102,13 +98,9 @@ def extract_takeoffs_and_landings(file_names: list, df_airport: pd.DataFrame) ->
                     airport = df_airport_prox['ident'].iloc[0]
                 else:
                     # 3. Find the closest airport
-                    min_distance = np.inf
-                    for index, row in df_airport_prox.iterrows():
-                        distance = np.sqrt((row['latitude'] - lat_prox)**2 + (row['longitude'] - lon_prox)**2)
-                        if distance < min_distance:
-                            min_distance = distance
-                            airport = row['ident']
-                            break
+                    # Create a distance column in the df_airport_prox dataframe
+                    df_airport_prox['distance'] = np.sqrt((df_airport_prox['latitude'] - lat_prox)**2 + (df_airport_prox['longitude'] - lon_prox)**2)
+                    airport = df_airport_prox['ident'].loc[df_airport_prox['distance'].idxmin()] 
                 # Write the landing demand to the landing_demand_file
                 landing_demand_file.write(f'{ident},{lat_prox},{lon_prox},{unix_time_to_datetime(time_landing)},{airport}\n')
 
@@ -131,6 +123,9 @@ if __name__ == '__main__':
     extracted_files = os.listdir(f'{PATH_PREFIX}/data/osstate/extracted')
     extracted_files = [file for file in extracted_files if file.endswith('.csv.gz')]
     print(f'There are {len(extracted_files)} files in the extracted directory')
+
+    # extract_takeoffs_and_landings(extracted_files, df_airports)
+    # raise Exception('This script is not yet complete. Please remove this line to continue')
 
     # Define the number of processes to use
     num_processes = multiprocessing.cpu_count()
