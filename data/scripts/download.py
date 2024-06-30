@@ -4,9 +4,11 @@ from datetime import datetime, timedelta
 from typing import List
 import multiprocessing
 
+from path_prefix import PATH_PREFIX
+
 def make_dir() -> None:
     import os
-    os.makedirs('/workspace/deepflow/data/osstate', exist_ok=True)
+    os.makedirs(f'{PATH_PREFIX}/data/osstate', exist_ok=True)
 
 make_dir()
 
@@ -28,7 +30,7 @@ def download(datetimes: List) -> None:
                 url = url.format(datetime=datetime, hour=hour)
                 print(f'Downloading from {url}')
                 filename = url.split('/')[-1]
-                download_file(url, filename, '/workspace/deepflow/data/osstate')
+                download_file(url, filename, f'{PATH_PREFIX}/data/osstate')
             except Exception as e:
                 print(f"Error occurred while downloading file: {e}")
                 continue
@@ -61,6 +63,8 @@ def test_download_file() -> None:
 def multiprocess_download(threads=4) -> None:
     date_list = get_date_list('2022-04-04', '2022-06-27')
     sublist_size = len(date_list) // threads
+    print(f"Sublist size: {sublist_size}")
+    print(f"Date list size: {len(date_list)}")
 
     processes = []
     for i in range(threads):

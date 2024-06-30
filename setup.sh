@@ -51,7 +51,7 @@ fi
 
 # Install additional packages with pip
 echo "Installing additional packages with pip..."
-pip install changepy zarr
+pip install changepy zarr multiprocess
 
 # Cleanup
 echo "Cleaning up..."
