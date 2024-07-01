@@ -1,2 +1,2 @@
 
-PATH_PREFIX = '/Volumes/CrucialX/deepflow'
+PATH_PREFIX = '/workspace'

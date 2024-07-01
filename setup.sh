@@ -51,7 +51,12 @@ fi
 
 # Install additional packages with pip
 echo "Installing additional packages with pip..."
-pip install changepy zarr multiprocess
+pip install changepy zarr multiprocess requests
+
+# Install linux screen
+echo "Installing Linux screen..."
+apt update
+apt install screen
 
 # Cleanup
 echo "Cleaning up..."
