@@ -101,6 +101,8 @@ def get_turning_points(df_ident: pd.DataFrame) -> TurnAndRise:
         None
 
     """
+    # Drop all rows with NaN values
+    df_ident = df_ident.dropna() 
     # Extract the values from the dataframe
     rlastposupdate = forward_fill(df_ident['lastposupdate'].values) # - df_ident['lastposupdate'].min()
     hdg = forward_fill(df_ident['heading'].values)
@@ -313,7 +315,7 @@ def plot_changepoints(tr: TurnAndRise, df: pd.DataFrame = None, ident:str = None
     plt.figure(figsize=(6,6))
     if df_ident is not None:
         plt.plot(df_ident['lon'], df_ident['lat'], 'black') # flight path
-    plt.plot(tp_lon, tp_lat, 'go', markersize=3) # turning points
+    plt.plot(tp_lon, tp_lat, 'go', markersize=5) # turning points
     plt.plot(dp_lon, dp_lat, 'rx', markersize=3) # altitude change points
 
     plt.xlabel('Longitude')
