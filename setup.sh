@@ -58,6 +58,7 @@ echo "Cleaning up..."
 rm $MINICONDA_INSTALLER
 
 # Run git config user.name and user.email
+echo "Configuring git..."
 git config --global user.name "Thinh Hoang"
 git config --global user.email "thinhhoangdinh95@hotmail.com"
 
