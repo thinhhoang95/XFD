@@ -62,6 +62,7 @@ def test_download_file() -> None:
 
 def multiprocess_download(threads=4) -> None:
     date_list = get_date_list('2022-04-04', '2022-06-27')
+    date_list = date_list[:2] # for testing purpose
     sublist_size = len(date_list) // threads
     print(f"Sublist size: {sublist_size}")
     print(f"Date list size: {len(date_list)}")

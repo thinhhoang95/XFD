@@ -1,2 +1,2 @@
 
-PATH_PREFIX = '/workspace'
+PATH_PREFIX = '/Users/thinhhoang/Documents/XFD'

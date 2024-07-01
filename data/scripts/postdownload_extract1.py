@@ -11,6 +11,7 @@ make_dir()
 
 def extract_files() -> None:
     date_list = get_date_list('2022-04-04', '2022-06-27')
+    date_list = date_list[:1] # Only process the first date for testing
     # Get all the files in the directory
     files = os.listdir(f'{PATH_PREFIX}/data/osstate')
     print(f'Found {len(files)} files')

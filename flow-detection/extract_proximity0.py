@@ -128,7 +128,7 @@ if __name__ == '__main__':
     # raise Exception('This script is not yet complete. Please remove this line to continue')
 
     # Define the number of processes to use
-    num_processes = multiprocessing.cpu_count()
+    num_processes = min(len(extracted_files), multiprocessing.cpu_count())
 
     # Divide the extracted_files into equal chunks
     chunk_size = len(extracted_files) // num_processes
