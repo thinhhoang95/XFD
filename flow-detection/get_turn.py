@@ -5,7 +5,7 @@ from changepy import pelt
 from changepy.costs import normal_mean
 import matplotlib.pyplot as plt
 
-from typing import TypedDict
+from typing import TypedDict, NotRequired
 
 import zarr
 
@@ -32,6 +32,7 @@ class TurnAndRise(TypedDict):
     tp_alt: np.ndarray
     tp_vel: np.ndarray
     landed: bool # 1 if the changepoint is the moment the aircraft landed (alt < 500)
+    tp_wp: NotRequired[list] # list of waypoint names
     
     # Altitude change
     dp_time: np.ndarray
@@ -364,3 +365,40 @@ def load_turnandrise_from_zarr(zarr_path: str) -> TurnAndRise:
         loaded_dict[key] = zarr_group.attrs[key]
 
     return loaded_dict
+
+import io
+from typing import TextIO
+def get_turns_and_rise_from_files(turns_df:pd.DataFrame, rises_df:pd.DataFrame, ident: str) -> TurnAndRise:
+    # rises_df column names: ident,time,lat,lon,alt,vel
+    # turns_df column names: ident,wp,time,lat,lon,alt,vel
+    # Filter the dataframes for the specific ident
+    rises_df_ident = rises_df[rises_df['ident'] == ident]
+    turns_df_ident = turns_df[turns_df['ident'] == ident]
+    if len(rises_df_ident) == 0 or len(turns_df_ident) == 0:
+        raise ValueError('No data found for the specified ident.')
+    # Prepare the dictionary
+    tr = {
+        'tp_time': turns_df_ident['time'].values,
+        'tp_lat': turns_df_ident['lat'].values,
+        'tp_lon': turns_df_ident['lon'].values,
+        'tp_alt': turns_df_ident['alt'].values,
+        'tp_vel': turns_df_ident['vel'].values,
+        'landed': False,
+        'ident': ident,
+        'dp_time': rises_df_ident['time'].values,
+        'dp_lat': rises_df_ident['lat'].values,
+        'dp_lon': rises_df_ident['lon'].values,
+        'dp_alt': rises_df_ident['alt'].values,
+        'dp_vel': rises_df_ident['vel'].values
+    }
+    # Landed is True if the last altitude is less than 1000
+    if tr['dp_alt'][-1] < 1000:
+        tr['landed'] = True
+    if tr['tp_alt'][-1] < 1000:
+        tr['landed'] = True
+
+    # Add the wp column to the dictionary if it exists
+    tr['tp_wp'] = turns_df_ident['wp'].tolist()
+
+    return tr
+    
